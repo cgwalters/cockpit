@@ -39,3 +39,5 @@ void gssh_channel_request_pty_size_async (GSshChannel         *self,
 gboolean gssh_channel_request_pty_size_finish (GSshChannel         *self,
                                                GAsyncResult        *res,
                                                GError             **error);
+
+int gssh_channel_get_exit_code (GSshChannel *self);

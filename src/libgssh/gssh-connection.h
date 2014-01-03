@@ -72,8 +72,10 @@ gboolean                gssh_connection_handshake_finish (GSshConnection    *sel
 void                    gssh_connection_set_interaction (GSshConnection   *self,
                                                          GTlsInteraction  *interaction);
 
-GBytes *                gssh_connection_preauth_get_host_key_fingerprint_sha1 (GSshConnection  *self,
-                                                                               char           **out_key_type);
+void                    gssh_connection_preauth_get_host_key (GSshConnection   *self,
+                                                              char            **out_keytype,
+                                                              char            **out_key_sha1_text,
+                                                              char            **out_key_base64);
 
 void                    gssh_connection_negotiate_async (GSshConnection      *self,
                                                          GCancellable        *cancellable,

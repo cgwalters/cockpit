@@ -47,7 +47,8 @@ struct _GSshConnection
 
   GError *cached_error;
   char *remote_hostkey_type;
-  GBytes *remote_hostkey_sha1;
+  char *remote_hostkey_sha1_text;
+  char *remote_hostkey_base64;
   GMainContext *maincontext;
   GSocketClient *socket_client;
   GSocket *socket;

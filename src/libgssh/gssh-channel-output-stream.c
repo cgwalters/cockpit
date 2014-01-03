@@ -143,12 +143,12 @@ gssh_channel_output_stream_close (GOutputStream  *stream,
 
 static void
 gssh_channel_output_stream_write_async (GOutputStream       *stream,
-                                               const void          *buffer,
-                                               gsize                count,
-                                               int                  io_priority,
-                                               GCancellable        *cancellable,
-                                               GAsyncReadyCallback  callback,
-                                               gpointer             user_data)
+                                        const void          *buffer,
+                                        gsize                count,
+                                        int                  io_priority,
+                                        GCancellable        *cancellable,
+                                        GAsyncReadyCallback  callback,
+                                        gpointer             user_data)
 {
   GSshChannelOutputStream *self = GSSH_CHANNEL_OUTPUT_STREAM (stream);
 
@@ -158,7 +158,8 @@ gssh_channel_output_stream_write_async (GOutputStream       *stream,
   self->write_task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_priority (self->write_task, io_priority);
 
-  self->buf = g_bytes_new (buffer, count);
+  /* Not really static, but the caller has to keep buffer alive. */
+  self->buf = g_bytes_new_static (buffer, count);
 
   _gssh_channel_output_stream_iteration (self);
 }

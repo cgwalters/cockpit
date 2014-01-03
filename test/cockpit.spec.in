@@ -44,9 +44,6 @@ BuildRequires: openssl-devel
 BuildRequires: zlib-devel
 BuildRequires: krb5-devel
 
-# Used during make check
-BuildRequires: sshpass
-
 BuildRequires: perl-Locale-PO
 BuildRequires: perl-JSON
 
@@ -55,7 +52,6 @@ Requires: realmd
 Requires: udisks2 >= 2.1.0
 Requires: mdadm
 Requires: lvm2
-Requires: sshpass
 
 %description
 Cockpit.

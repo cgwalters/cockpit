@@ -86,9 +86,10 @@ reset_state (GSshConnection               *self)
     }
   g_clear_pointer (&self->channels, g_hash_table_unref);
   /* This hash doesn't hold a ref */
-  self->channels = g_hash_table_new_full (NULL, NULL, NULL, NULL);
+  self->channels = g_hash_table_new (NULL, NULL);
 
-  g_clear_pointer (&self->remote_hostkey_sha1, g_bytes_unref);
+  g_clear_pointer (&self->remote_hostkey_sha1_text, g_free);
+  g_clear_pointer (&self->remote_hostkey_base64, g_free);
   g_clear_error (&self->cached_error);
   g_clear_object (&self->socket);
   if (self->socket_source)
@@ -350,6 +351,8 @@ set_hostkey_sha1 (GSshConnection           *self,
   guint8 sha1buf[20];
   gsize sha1len = sizeof (sha1buf);
   GChecksum *csum;
+  GString *buf;
+  guint i;
 
   rc = ssh_get_publickey (self->session, &key);
   if (rc != SSH_OK)
@@ -373,8 +376,18 @@ set_hostkey_sha1 (GSshConnection           *self,
   g_checksum_get_digest (csum, sha1buf, &sha1len);
   g_assert (sha1len == sizeof (sha1buf));
 
-  self->remote_hostkey_sha1 = g_bytes_new (sha1buf, sha1len);
+  buf = g_string_new ("");
+  for (i = 0; i < sha1len; i++)
+    {
+      g_string_append_printf (buf, "%02X", sha1buf[i]);
+      if (i < sha1len - 1)
+	g_string_append_c (buf, ':');
+    }
+
+    self->remote_hostkey_sha1_text = g_string_free (buf, FALSE);
   self->remote_hostkey_type = g_strdup (ssh_key_type_to_char (ssh_key_type (key)));
+  self->remote_hostkey_base64 = g_strdup (key_b64);
+  free (key_b64);  /* Possible free != g_free */
 
   ret = TRUE;
  out:
@@ -489,7 +502,7 @@ gssh_connection_iteration_internal (GSshConnection   *self,
             /* Fall through if NONE failed */
           }
 
-        g_clear_pointer (&self->authmechanisms, g_ptr_array_unref);
+        g_clear_pointer (&self->authmechanisms, g_array_unref);
         self->authmechanisms = g_array_new (FALSE, TRUE, sizeof (guint));
         method = ssh_userauth_list (self->session, NULL);
 
@@ -510,9 +523,8 @@ gssh_connection_iteration_internal (GSshConnection   *self,
       }
     case GSSH_CONNECTION_STATE_AUTHENTICATION_REQUIRED:
       {
-        /* User should have connected to notify:: state and
-         * watch for AUTHENTICATION_REQUIRED, then call
-         * gssh_connection_auth_async().
+        /* App may be waiting on hostkey approval; wait for them to
+         * invoke gssh_connection_auth_async().
          */
         if (self->auth_task == NULL)
           {
@@ -555,18 +567,24 @@ gssh_connection_iteration_internal (GSshConnection   *self,
                       g_tls_interaction_invoke_ask_password (self->interaction, password,
                                                              g_task_get_cancellable (self->auth_task),
                                                              &local_error);
-                    if (result == G_TLS_INTERACTION_FAILED)
+                    if (result == G_TLS_INTERACTION_UNHANDLED)
+                      {
+                        g_clear_error (&local_error);
+                        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                                     "Unhandled password interaction");
+                        return_task_error_and_clear (&self->auth_task, local_error);
+                        return;
+                      }
+                    else if (result == G_TLS_INTERACTION_FAILED)
                       {
                         return_task_error_and_clear (&self->auth_task, local_error);
                         return;
                       }
-                    else
+                    else if (result == G_TLS_INTERACTION_HANDLED)
                       {
                         gsize password_len;
                         const guint8 *password_value;
                         GString *password_str;
-
-                        g_assert (result == G_TLS_INTERACTION_HANDLED);
 
                         password_value = g_tls_password_get_value (password, &password_len);
 
@@ -754,18 +772,24 @@ gssh_connection_get_state (GSshConnection        *self)
 }
 
 /**
- * gssh_connection_preauth_get_host_key_fingerprint_sha1:
+ * gssh_connection_preauth_get_host_key:
  * @self: Self
  * @out_key_type: (out): String representation of key type
- *
- * Returns: (transfer none): 20 bytes for the remote host's SHA1 fingerprint
+ * @out_key_sha1_text: (out): String representation of key SHA1
+ * @out_key_base64: (out): String representation of base64-encoded key
  */
-GBytes *
-gssh_connection_preauth_get_host_key_fingerprint_sha1 (GSshConnection          *self,
-                                                       char                   **out_key_type)
+void
+gssh_connection_preauth_get_host_key (GSshConnection   *self,
+                                      char            **out_key_type,
+                                      char            **out_key_sha1_text,
+                                      char            **out_key_base64)
 {
-  *out_key_type = g_strdup (self->remote_hostkey_type);
-  return self->remote_hostkey_sha1;
+  if (out_key_type)
+    *out_key_type = g_strdup (self->remote_hostkey_type);
+  if (out_key_sha1_text)
+    *out_key_sha1_text = g_strdup (self->remote_hostkey_sha1_text);
+  if (out_key_base64)
+    *out_key_base64 = g_strdup (self->remote_hostkey_base64);
 }
 
 void
